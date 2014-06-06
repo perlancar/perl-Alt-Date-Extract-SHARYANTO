@@ -1,7 +1,7 @@
 #!perl -T
 use strict;
 use warnings;
-use Test::More tests => 3;
+use Test::More tests => 7;
 use Test::MockTime 'set_fixed_time';
 use Date::Extract;
 
@@ -23,3 +23,10 @@ is($verbatim, 'Today', 'returns verbatim text');
 $parser = Date::Extract->new(format => 'epoch');
 my $epoch = $parser->extract($in);
 is($epoch, 1195171200, 'returns epoch');
+
+$parser = Date::Extract->new(format => 'combined');
+my $hash = $parser->extract($in);
+is(ref($hash), 'HASH', 'returns hash');
+is($hash->{verbatim}, 'Today', 'hash contains verbatim');
+is($hash->{DateTime}->ymd, '2007-11-16', 'hash contains DateTime object');
+is($hash->{pos}, 0, 'hash contains pos');

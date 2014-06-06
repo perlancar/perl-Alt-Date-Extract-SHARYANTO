@@ -26,8 +26,9 @@ sub new {
 
     if ($args{format} ne 'DateTime'
      && $args{format} ne 'verbatim'
-     && $args{format} ne 'epoch') {
-        _croak "Invalid `format` passed to constructor: expected `DateTime', `verbatim', `epoch'.";
+     && $args{format} ne 'epoch'
+     && $args{format} ne 'combined') {
+        _croak "Invalid `format` passed to constructor: expected `DateTime', `verbatim', `epoch', `combined'.";
     }
 
     if ($args{returns} ne 'first'
@@ -194,10 +195,18 @@ sub _extract {
     my $text = shift;
     my %args = @_;
 
-    my $regex = $self->regex || $self->_build_regex;
-    my @gleaned = $text =~ /$regex/g;
+    my $fmt = $self->{format};
 
-    return @gleaned if $self->{format} eq 'verbatim';
+    my $regex = $self->regex || $self->_build_regex;
+    my @combined;
+    while ($text =~ /$regex/g) {
+        push @combined, {
+            pos => $-[0],
+            verbatim => $1,
+        };
+    }
+
+    return (map {$_->{verbatim}} @combined) if $fmt eq 'verbatim';
 
     my %dtfn_args;
     $dtfn_args{prefer_future} = 1
@@ -205,17 +214,21 @@ sub _extract {
     $dtfn_args{time_zone} = $args{time_zone};
 
     my $parser = DateTime::Format::Natural->new(%dtfn_args);
-    my @ret;
-    for (@gleaned) {
-        my $dt = $parser->parse_datetime($_);
-        push @ret, $dt->set_time_zone($args{time_zone})
-            if $parser->success;
+    for (@combined) {
+        my $dt = $parser->parse_datetime($_->{verbatim});
+        if ($parser->success) {
+            $dt->set_time_zone($args{time_zone});
+            $_->{DateTime} = $dt;
+        }
     }
 
-    if ($self->{format} eq 'epoch') {
-        return map { $_->epoch } @ret;
+    if ($fmt eq 'epoch') {
+        return map { $_->{DateTime}->epoch } @combined;
+    } elsif ($fmt eq 'combined') {
+        return @combined;
+    } else {
+        return map {$_->{DateTime}} @combined;
     }
-    return @ret;
 }
 
 1;
@@ -259,7 +272,9 @@ set to 2019. This is what your users would probably expect.
 
 Choose what format the extracted date(s) will be. The default is "DateTime",
 which will return L<DateTime> object(s). Other option include "verbatim" (return
-the original text), or "epoch" (return Unix timestamp).
+the original text), "epoch" (return Unix timestamp), or "combined" (return
+hashref containing these keys "verbatim", "DateTime", "pos" [position of date
+string in the text]).
 
 =item time_zone
 
